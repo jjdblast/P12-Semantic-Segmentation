@@ -1,15 +1,23 @@
 import os.path
 import tensorflow as tf
+from keras import backend as K
 import helper
 import warnings
 from distutils.version import LooseVersion
+from seg_mobilenet import SegMobileNet
 import project_tests as tests
+from tqdm import tqdm
+import numpy as np
 from IPython import embed
-
+from augmentation import rotate_both, flip_both, blur_both
+# https://keras.io/backend/
+KERAS_TRAIN = 1
+KERAS_TEST = 0
 
 # Check TensorFlow Version
-assert LooseVersion(tf.__version__) >= LooseVersion(
-    '1.0'), 'Please use TensorFlow version 1.0 or newer.  You are using {}'.format(tf.__version__)
+assert LooseVersion(tf.__version__) >= LooseVersion('1.0'), \
+    'Please use TensorFlow version 1.0 or newer.  You are using {}'.format(
+        tf.__version__)
 print('TensorFlow Version: {}'.format(tf.__version__))
 
 # Check for a GPU
@@ -18,90 +26,6 @@ if not tf.test.gpu_device_name():
         'No GPU found. Please use a GPU to train your neural network.')
 else:
     print('Default GPU Device: {}'.format(tf.test.gpu_device_name()))
-
-
-def load_vgg(sess, vgg_path):
-    """
-    Load Pretrained VGG Model into TensorFlow.
-    :param sess: TensorFlow Session
-    :param vgg_path: Path to vgg folder, containing "variables/" and "saved_model.pb"
-    :return: Tuple of Tensors from VGG model (image_input, keep_prob, layer3_out, layer4_out, layer7_out)
-    """
-    #   Use tf.saved_model.loader.load to load the model and weights
-    vgg_tag = 'vgg16'
-    tf.saved_model.loader.load(sess, [vgg_tag], vgg_path)
-
-    vgg_input_tensor_name = 'image_input:0'
-    vgg_keep_prob_tensor_name = 'keep_prob:0'
-    vgg_layer3_out_tensor_name = 'layer3_out:0'
-    vgg_layer4_out_tensor_name = 'layer4_out:0'
-    vgg_layer7_out_tensor_name = 'layer7_out:0'
-
-    tensor_names = []
-    tensor_names.append(vgg_input_tensor_name)
-    tensor_names.append(vgg_keep_prob_tensor_name)
-    tensor_names.append(vgg_layer3_out_tensor_name)
-    tensor_names.append(vgg_layer4_out_tensor_name)
-    tensor_names.append(vgg_layer7_out_tensor_name)
-
-    graph = tf.get_default_graph()
-    tensors = []
-    for tensor_name in tensor_names:
-        tensor = graph.get_tensor_by_name(tensor_name)
-        tensors.append(tensor)
-
-    return tensors
-
-
-tests.test_load_vgg(load_vgg, tf)
-
-
-def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
-    """
-    Create the layers for a fully convolutional network.  Build skip-layers using the vgg layers.
-    :param vgg_layer7_out: TF Tensor for VGG Layer 3 output
-    :param vgg_layer4_out: TF Tensor for VGG Layer 4 output
-    :param vgg_layer3_out: TF Tensor for VGG Layer 7 output
-    :param num_classes: Number of classes to classify
-    :return: The Tensor for the last layer of output
-    """
-    # TODO: Implement function
-    kernel_regularizer = tf.contrib.layers.l2_regularizer(1e-3)
-    kernel_initializer = tf.truncated_normal_initializer(stddev=0.01)
-
-    pred_s32 = tf.layers.conv2d(
-        vgg_layer7_out, num_classes, 1, padding='same',
-        kernel_regularizer=kernel_regularizer,
-        kernel_initializer=kernel_initializer)
-    deconv_s16 = tf.layers.conv2d_transpose(
-        pred_s32, num_classes, 4, 2, padding='same',
-        kernel_regularizer=kernel_regularizer,
-        kernel_initializer=kernel_initializer)
-
-    pred_s16 = tf.layers.conv2d(
-        vgg_layer4_out, num_classes, 1, padding='same',
-        kernel_regularizer=kernel_regularizer,
-        kernel_initializer=kernel_initializer)
-    pred_s16 = tf.add(deconv_s16, pred_s16)
-
-    deconv_s8 = tf.layers.conv2d_transpose(
-        pred_s16, num_classes, 4, 2, padding='same',
-        kernel_regularizer=kernel_regularizer,
-        kernel_initializer=kernel_initializer)
-    pred_s8 = tf.layers.conv2d(
-        vgg_layer3_out, num_classes, 1, padding='same',
-        kernel_regularizer=kernel_regularizer,
-        kernel_initializer=kernel_initializer)
-    pred_s8 = tf.add(deconv_s8, pred_s8)
-    pred_s1 = tf.layers.conv2d_transpose(
-        pred_s8, num_classes, 16, 8, padding='same',
-        kernel_regularizer=kernel_regularizer,
-        kernel_initializer=kernel_initializer)
-
-    return pred_s1
-
-
-tests.test_layers(layers)
 
 
 def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
@@ -119,25 +43,37 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
         labels=correct_label, logits=logits))
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+    # optimizer = tf.train.MomentumOptimizer(
+    #     learning_rate=learning_rate, momentum=0.9)
     train_op = optimizer.minimize(loss)
 
-    return logits, train_op, loss
+    predicted_label = tf.argmax(logits, axis=-1)
+    sparse_correct_label = tf.argmax(correct_label, axis=-1)
+    with tf.variable_scope("iou") as scope:
+        iou, iou_op = tf.metrics.mean_iou(
+            sparse_correct_label, predicted_label, num_classes)
+    metric_vars = [v for v in tf.local_variables()
+                   if v.name.split('/')[0] == 'iou']
+    metric_reset_ops = tf.variables_initializer(metric_vars)
+    return logits, train_op, loss, iou, iou_op, metric_reset_ops
 
 
-tests.test_optimize(optimize)
+# tests.test_optimize(optimize)
 
 
 def train_nn(
         sess,
         epochs,
         batch_size,
-        get_batches_fn,
+        train_batches_fn, val_batches_fn,
         train_op,
         cross_entropy_loss,
         input_image,
         correct_label,
-        keep_prob,
-        learning_rate):
+        learning_rate,
+        learning_phase,
+        iou_op, iou,
+        metric_reset_ops, update_ops):
     """
     Train neural network and print out the loss during training.
     :param sess: TF Session
@@ -152,67 +88,135 @@ def train_nn(
     :param learning_rate: TF Placeholder for learning rate
     """
     # TODO: Implement function
+    train_loss_summary = tf.Variable(0.0)
+    val_loss_summary = tf.Variable(0.0)
+    train_iou_summary = tf.Variable(0.0)
+    val_iou_summary = tf.Variable(0.0)
+
+    tf.summary.scalar("train_loss", train_loss_summary)
+    tf.summary.scalar("train_iou", train_iou_summary)
+    tf.summary.scalar("val_loss", val_loss_summary)
+    tf.summary.scalar("val_iou", val_iou_summary)
+
+    summary = tf.summary.merge_all()
+    writer = tf.summary.FileWriter('log', graph=sess.graph)
+
+    saver = tf.train.Saver()
+    sess.run(metric_reset_ops)
     sess.run(tf.global_variables_initializer())
-    for epoch in range(epochs):
-        for image, label in get_batches_fn(batch_size):
+    epoch_pbar = tqdm(range(epochs))
+    for epoch in epoch_pbar:
+        # train
+        train_loss = 0.0
+        iteration_counter = 0
+        for image, label in train_batches_fn(batch_size):
+            fetches = [cross_entropy_loss, train_op, iou_op] + update_ops
             feed_dict = {
-                input_image: image,
-                correct_label: label,
-                keep_prob: 0.8,
-                learning_rate: 0.001,
+                input_image: image, correct_label: label,
+                learning_rate: 0.05, learning_phase: KERAS_TRAIN,
             }
-            _, loss_val = sess.run(
-                [train_op, cross_entropy_loss], feed_dict=feed_dict)
-            print("Loss: %.4f" % loss_val)
-        print("Epoch #%d: Loss: %.4f" % (epoch, loss_val))
+            loss_val, *_ = sess.run(  # noqa
+                fetches,
+                feed_dict=feed_dict)
+            # embed()
+            train_loss += loss_val
+            iteration_counter += 1
+        train_iou = sess.run(iou)
+        train_loss /= iteration_counter
+        val_loss = 0.0
+        iteration_counter = 0
+        sess.run(metric_reset_ops)
+        # val
+        for image, label in val_batches_fn(batch_size):
+            feed_dict = {
+                input_image: image, correct_label: label,
+                learning_phase: KERAS_TEST,
+            }
+            *_, loss_val = sess.run(
+                [iou_op, cross_entropy_loss], feed_dict=feed_dict)
+            val_loss += loss_val
+            iteration_counter += 1
+
+        val_iou = sess.run(iou)
+        val_loss /= iteration_counter
+        epoch_pbar.write(
+            "Epoch %03d: loss: %.4f mIoU: %.4f val_loss: %.4f val_mIoU: %.4f"
+            % (epoch, train_loss, train_iou, val_loss, val_iou))
+        sess.run(tf.assign(train_loss_summary, train_loss))
+        sess.run(tf.assign(val_loss_summary, val_loss))
+        sess.run(tf.assign(train_iou_summary, train_iou))
+        sess.run(tf.assign(val_iou_summary, val_iou))
+        summary_val = sess.run(summary)
+        writer.add_summary(summary_val, epoch)
+        if epoch % 5 == 0:
+            saver.save(sess, 'checkpoint/model.ckpt', global_step=epoch)
 
 
-tests.test_train_nn(train_nn)
+def augmentation_fn(image, label):
+    """wrapper for augmentation methods
+    """
+    image = np.uint8(image)
+    label = np.uint8(label)
+    image, label = flip_both(image, label, p=0.5)
+    image, label = rotate_both(image, label, p=0.5, ignore_label=1)
+    image, label = blur_both(image, label, p=0.5)
+    return image, label == 1
 
 
+# tests.test_train_nn(train_nn)
 def run():
     num_classes = 2
     image_shape = (160, 576)
-    epochs = 20
-    batch_size = 1
+    epochs = 100
+    batch_size = 18
     data_dir = './data'
     runs_dir = './runs'
     tests.test_for_kitti_dataset(data_dir)
-
-    # Download pretrained vgg model
-    helper.maybe_download_pretrained_vgg(data_dir)
-
-    # OPTIONAL: Train and Inference on the cityscapes dataset instead of the Kitti dataset.
+    # OPTIONAL: Train and Inference on the cityscapes dataset instead of the
     # You'll need a GPU with at least 10 teraFLOPS to train on.
     #  https://www.cityscapes-dataset.com/
-
-    with tf.Session() as sess:
-        # Path to vgg model
-        vgg_path = os.path.join(data_dir, 'vgg')
+    weight_path = helper.maybe_download_mobilenet_weights()
+    with K.get_session() as sess:
         # Create function to get batches
-        get_batches_fn = helper.gen_batch_function(
-            os.path.join(data_dir, 'data_road/training'), image_shape)
+        train_batches_fn, val_batches_fn = helper.gen_batches_functions(
+            os.path.join(data_dir, 'data_road/training'), image_shape,
+            train_augmentation_fn=augmentation_fn)
         # OPTIONAL: Augment Images for better results
         #  https://datascience.stackexchange.com/questions/5224/how-to-prepare-augment-images-for-neural-network
 
         # TODO: Build NN using load_vgg, layers, and optimize function
-        learning_rate = tf.placeholder(tf.float32)
+        learning_phase = K.learning_phase()
+        learning_rate = tf.placeholder(tf.float32, name='learning_rate')
         correct_label = tf.placeholder(
-            tf.float32, shape=[None, None, None, num_classes])
-        input_image, keep_prob, l3, l4, l7 = load_vgg(sess, vgg_path)
-        logits = layers(l3, l4, l7, num_classes)
-        tf.summary.FileWriter('bla', graph=sess.graph)
-        print("Done")
-        logits, train_op, loss = optimize(
+            tf.float32,
+            shape=[None, image_shape[0], image_shape[1], num_classes],
+            name='correct_label')
+
+        model = SegMobileNet(
+            image_shape[0], image_shape[1], num_classes=num_classes)
+        # model.load_weights(weight_path, by_name=True)
+        input_image = model.input
+        logits = model.output
+
+        logits, train_op, loss, iou, iou_op, metric_reset_ops = optimize(
             logits, correct_label, learning_rate, num_classes)
+
+        # https://blog.keras.io/keras-as-a-simplified-interface-to-tensorflow-tutorial.html  # noqa
+        update_ops = model.updates
+
         # TODO: Train NN using the train_nn function
-        train_nn(sess, epochs, batch_size, get_batches_fn,
+        train_nn(sess, epochs, batch_size,
+                 train_batches_fn, val_batches_fn,
                  train_op, loss, input_image,
-                 correct_label, keep_prob, learning_rate)
+                 correct_label, learning_rate,
+                 learning_phase,
+                 iou_op, iou,
+                 metric_reset_ops, update_ops)
+
         # TODO: Save inference data using helper.save_inference_samples
         helper.save_inference_samples(
             runs_dir, data_dir, sess, image_shape,
-            logits, keep_prob, input_image)
+            logits, learning_phase, input_image)
         # OPTIONAL: Apply the trained model to a video
 
 

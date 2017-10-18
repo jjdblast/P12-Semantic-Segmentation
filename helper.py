@@ -9,7 +9,10 @@ import time
 import tensorflow as tf
 from glob import glob
 from urllib.request import urlretrieve
+from keras.utils import get_file
 from tqdm import tqdm
+from sklearn.model_selection import train_test_split
+from IPython import embed
 
 
 class DLProgress(tqdm):
@@ -45,7 +48,7 @@ def maybe_download_pretrained_vgg(data_dir):
         print('Downloading pre-trained vgg model...')
         with DLProgress(unit='B', unit_scale=True, miniters=1) as pbar:
             urlretrieve(
-                'https://s3-us-west-1.amazonaws.com/udacity-selfdrivingcar/vgg.zip',
+                'https://s3-us-west-1.amazonaws.com/udacity-selfdrivingcar/vgg.zip',  # noqa
                 os.path.join(
                     vgg_path,
                     vgg_filename),
@@ -61,25 +64,41 @@ def maybe_download_pretrained_vgg(data_dir):
         os.remove(os.path.join(vgg_path, vgg_filename))
 
 
-def gen_batch_function(data_folder, image_shape):
+def maybe_download_mobilenet_weights(alpha_text='1_0', rows=224):
+    base_weight_path = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.6/'  # noqa
+    model_name = 'mobilenet_%s_%d_tf_no_top.h5' % (alpha_text, rows)
+    weigh_path = base_weight_path + model_name
+    weight_path = get_file(model_name,
+                           weigh_path,
+                           cache_subdir='models')
+    return weight_path
+
+
+def gen_batches_functions(data_folder, image_shape,
+                          train_augmentation_fn=None,
+                          val_augmentation_fn=None):
     """
     Generate function to create batches of training data
     :param data_folder: Path to folder that contains all the datasets
     :param image_shape: Tuple - Shape of image
     :return:
     """
-    def get_batches_fn(batch_size):
+    image_paths = sorted(
+        glob(os.path.join(data_folder, 'image_2', '*.png')))[:]
+    train_paths, val_paths = train_test_split(
+        image_paths, test_size=0.2, random_state=21)
+
+    def get_batches_fn(batch_size, image_paths, augmentation_fn=None):
         """
         Create batches of training data
         :param batch_size: Batch Size
         :return: Batches of training data
         """
-        image_paths = glob(os.path.join(data_folder, 'image_2', '*.png'))
         label_paths = {
             re.sub(r'_(lane|road)_', '_', os.path.basename(path)): path
-            for path in glob(os.path.join(data_folder, 'gt_image_2', '*_road_*.png'))}
+            for path in glob(os.path.join(
+                data_folder, 'gt_image_2', '*_road_*.png'))}
         background_color = np.array([255, 0, 0])
-
         random.shuffle(image_paths)
         for batch_i in range(0, len(image_paths), batch_size):
             images = []
@@ -88,27 +107,34 @@ def gen_batch_function(data_folder, image_shape):
                 gt_image_file = label_paths[os.path.basename(image_file)]
 
                 image = scipy.misc.imresize(
-                    scipy.misc.imread(image_file), image_shape)
+                    scipy.misc.imread(image_file, mode='RGB'), image_shape)
+
                 gt_image = scipy.misc.imresize(
                     scipy.misc.imread(gt_image_file), image_shape)
 
                 gt_bg = np.all(gt_image == background_color, axis=2)
+                if augmentation_fn:
+                    image, gt_bg = augmentation_fn(image, gt_bg)
+
                 gt_bg = gt_bg.reshape(*gt_bg.shape, 1)
                 gt_image = np.concatenate((gt_bg, np.invert(gt_bg)), axis=2)
-
                 images.append(image)
                 gt_images.append(gt_image)
 
-            yield np.array(images), np.array(gt_images)
-    return get_batches_fn
+            yield np.array(images) / 127.5 - 1.0, np.array(gt_images)
+
+    train_batches_fn = lambda batch_size: get_batches_fn(batch_size, train_paths, augmentation_fn=train_augmentation_fn)  # noqa
+    val_batches_fn = lambda batch_size: get_batches_fn(batch_size, val_paths, augmentation_fn=val_augmentation_fn)  # noqa  
+
+    return train_batches_fn, val_batches_fn
 
 
 def gen_test_output(
         sess,
         logits,
-        keep_prob,
         image_pl,
         data_folder,
+        learning_phase,
         image_shape):
     """
     Generate test output using the test images
@@ -120,13 +146,16 @@ def gen_test_output(
     :param image_shape: Tuple - Shape of image
     :return: Output for for each test image
     """
-    for image_file in glob(os.path.join(data_folder, 'image_2', '*.png')):
-        image = scipy.misc.imresize(scipy.misc.imread(image_file), image_shape)
-
+    for image_file in sorted(
+            glob(os.path.join(data_folder, 'image_2', '*.png')))[:]:
+        image = scipy.misc.imresize(
+            scipy.misc.imread(image_file, mode='RGB'), image_shape)
+        pimg = image / 127.5 - 1.0
         im_softmax = sess.run(
-            [tf.nn.softmax(logits)],
-            {keep_prob: 1.0, image_pl: [image]})
-        im_softmax = im_softmax[0][:, 1].reshape(
+            tf.nn.softmax(logits),
+            {image_pl: [pimg],
+             learning_phase: 0})
+        im_softmax = im_softmax[:, 1].reshape(
             image_shape[0], image_shape[1])
         segmentation = (
             im_softmax > 0.5).reshape(
@@ -147,7 +176,7 @@ def save_inference_samples(
         sess,
         image_shape,
         logits,
-        keep_prob,
+        learning_phase,
         input_image):
     # Make folder for current run
     output_dir = os.path.join(runs_dir, str(time.time()))
@@ -158,7 +187,7 @@ def save_inference_samples(
     # Run NN on test images and save them to HD
     print('Training Finished. Saving test images to: {}'.format(output_dir))
     image_outputs = gen_test_output(
-        sess, logits, keep_prob, input_image, os.path.join(
-            data_dir, 'data_road/testing'), image_shape)
+        sess, logits, input_image, os.path.join(
+            data_dir, 'data_road/testing'), learning_phase, image_shape)
     for name, image in image_outputs:
         scipy.misc.imsave(os.path.join(output_dir, name), image)
