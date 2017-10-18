@@ -86,7 +86,7 @@ def gen_batches_functions(data_folder, image_shape,
     image_paths = sorted(
         glob(os.path.join(data_folder, 'image_2', '*.png')))[:]
     train_paths, val_paths = train_test_split(
-        image_paths, test_size=0.2, random_state=21)
+        image_paths, test_size=0.1, random_state=21)
 
     def get_batches_fn(batch_size, image_paths, augmentation_fn=None):
         """

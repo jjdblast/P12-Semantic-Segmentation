@@ -9,7 +9,7 @@ import project_tests as tests
 from tqdm import tqdm
 import numpy as np
 from IPython import embed
-from augmentation import rotate_both, flip_both, blur_both
+from augmentation import rotate_both, flip_both, blur_both, illumination_change_both  # noqa
 # https://keras.io/backend/
 KERAS_TRAIN = 1
 KERAS_TEST = 0
@@ -37,7 +37,6 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     :param num_classes: Number of classes to classify
     :return: Tuple of (logits, train_op, loss)
     """
-    # TODO: Implement function
     logits = tf.reshape(nn_last_layer, (-1, num_classes))
     correct_label = tf.reshape(correct_label, (-1, num_classes))
     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
@@ -68,10 +67,8 @@ def train_nn(
         train_batches_fn, val_batches_fn,
         train_op,
         cross_entropy_loss,
-        input_image,
-        correct_label,
-        learning_rate,
-        learning_phase,
+        input_image, correct_label,
+        learning_rate, learning_rate_val, decay, learning_phase,
         iou_op, iou,
         metric_reset_ops, update_ops):
     """
@@ -79,7 +76,8 @@ def train_nn(
     :param sess: TF Session
     :param epochs: Number of epochs
     :param batch_size: Batch size
-    :param get_batches_fn: Function to get batches of training data.  Call using get_batches_fn(batch_size)
+    :param get_batches_fn: Function to get batches of training data.
+           Call using get_batches_fn(batch_size)
     :param train_op: TF Operation to train the neural network
     :param cross_entropy_loss: TF Tensor for the amount of loss
     :param input_image: TF Placeholder for input images
@@ -87,16 +85,16 @@ def train_nn(
     :param keep_prob: TF Placeholder for dropout keep probability
     :param learning_rate: TF Placeholder for learning rate
     """
-    # TODO: Implement function
-    train_loss_summary = tf.Variable(0.0)
-    val_loss_summary = tf.Variable(0.0)
-    train_iou_summary = tf.Variable(0.0)
-    val_iou_summary = tf.Variable(0.0)
+    train_loss_summary = tf.placeholder(tf.float32)
+    val_loss_summary = tf.placeholder(tf.float32)
+    train_iou_summary = tf.placeholder(tf.float32)
+    val_iou_summary = tf.placeholder(tf.float32)
 
     tf.summary.scalar("train_loss", train_loss_summary)
     tf.summary.scalar("train_iou", train_iou_summary)
     tf.summary.scalar("val_loss", val_loss_summary)
     tf.summary.scalar("val_iou", val_iou_summary)
+    tf.summary.scalar("learning_rate", learning_rate)
 
     summary = tf.summary.merge_all()
     writer = tf.summary.FileWriter('log', graph=sess.graph)
@@ -113,7 +111,7 @@ def train_nn(
             fetches = [cross_entropy_loss, train_op, iou_op] + update_ops
             feed_dict = {
                 input_image: image, correct_label: label,
-                learning_rate: 0.05, learning_phase: KERAS_TRAIN,
+                learning_rate: learning_rate_val, learning_phase: KERAS_TRAIN,
             }
             loss_val, *_ = sess.run(  # noqa
                 fetches,
@@ -121,6 +119,8 @@ def train_nn(
             # embed()
             train_loss += loss_val
             iteration_counter += 1
+
+        learning_rate_val = learning_rate_val / (1.0 + decay * epoch)
         train_iou = sess.run(iou)
         train_loss /= iteration_counter
         val_loss = 0.0
@@ -142,13 +142,14 @@ def train_nn(
         epoch_pbar.write(
             "Epoch %03d: loss: %.4f mIoU: %.4f val_loss: %.4f val_mIoU: %.4f"
             % (epoch, train_loss, train_iou, val_loss, val_iou))
-        sess.run(tf.assign(train_loss_summary, train_loss))
-        sess.run(tf.assign(val_loss_summary, val_loss))
-        sess.run(tf.assign(train_iou_summary, train_iou))
-        sess.run(tf.assign(val_iou_summary, val_iou))
-        summary_val = sess.run(summary)
+        summary_val = sess.run(
+            summary, feed_dict={train_loss_summary: train_loss,
+                                val_loss_summary: val_loss,
+                                train_iou_summary: train_iou,
+                                val_iou_summary: val_iou,
+                                learning_rate: learning_rate_val})
         writer.add_summary(summary_val, epoch)
-        if epoch % 5 == 0:
+        if epoch % 2 == 0:
             saver.save(sess, 'checkpoint/model.ckpt', global_step=epoch)
 
 
@@ -160,6 +161,7 @@ def augmentation_fn(image, label):
     image, label = flip_both(image, label, p=0.5)
     image, label = rotate_both(image, label, p=0.5, ignore_label=1)
     image, label = blur_both(image, label, p=0.5)
+    image, label = illumination_change_both(image, label, p=0.5)
     return image, label == 1
 
 
@@ -167,7 +169,9 @@ def augmentation_fn(image, label):
 def run():
     num_classes = 2
     image_shape = (160, 576)
+    learning_rate_val = 0.05
     epochs = 100
+    decay = learning_rate_val / epochs
     batch_size = 18
     data_dir = './data'
     runs_dir = './runs'
@@ -184,7 +188,6 @@ def run():
         # OPTIONAL: Augment Images for better results
         #  https://datascience.stackexchange.com/questions/5224/how-to-prepare-augment-images-for-neural-network
 
-        # TODO: Build NN using load_vgg, layers, and optimize function
         learning_phase = K.learning_phase()
         learning_rate = tf.placeholder(tf.float32, name='learning_rate')
         correct_label = tf.placeholder(
@@ -204,16 +207,14 @@ def run():
         # https://blog.keras.io/keras-as-a-simplified-interface-to-tensorflow-tutorial.html  # noqa
         update_ops = model.updates
 
-        # TODO: Train NN using the train_nn function
         train_nn(sess, epochs, batch_size,
                  train_batches_fn, val_batches_fn,
                  train_op, loss, input_image,
-                 correct_label, learning_rate,
-                 learning_phase,
-                 iou_op, iou,
-                 metric_reset_ops, update_ops)
+                 correct_label,
+                 learning_rate, learning_rate_val, decay, learning_phase,
+                 iou_op, iou, metric_reset_ops,
+                 update_ops)
 
-        # TODO: Save inference data using helper.save_inference_samples
         helper.save_inference_samples(
             runs_dir, data_dir, sess, image_shape,
             logits, learning_phase, input_image)
