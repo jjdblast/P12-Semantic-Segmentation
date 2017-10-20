@@ -1,4 +1,6 @@
 import os.path
+import os
+import shutil
 import tensorflow as tf
 from keras import backend as K
 import helper
@@ -70,7 +72,8 @@ def train_nn(
         input_image, correct_label,
         learning_rate, learning_rate_val, decay, learning_phase,
         iou_op, iou,
-        metric_reset_ops, update_ops):
+        metric_reset_ops, update_ops,
+        model):
     """
     Train neural network and print out the loss during training.
     :param sess: TF Session
@@ -99,9 +102,13 @@ def train_nn(
     summary = tf.summary.merge_all()
     writer = tf.summary.FileWriter('log', graph=sess.graph)
 
-    saver = tf.train.Saver()
+    all_vars = tf.global_variables()
+    optimizer_variables = [v for v in all_vars
+                           if v not in model.updates and
+                           v not in model.trainable_weights]
+    # embed()
     sess.run(metric_reset_ops)
-    sess.run(tf.global_variables_initializer())
+    sess.run(tf.variables_initializer(optimizer_variables))
     epoch_pbar = tqdm(range(epochs))
     for epoch in epoch_pbar:
         # train
@@ -150,11 +157,13 @@ def train_nn(
                                 learning_rate: learning_rate_val})
         writer.add_summary(summary_val, epoch)
         if epoch % 2 == 0:
-            saver.save(sess, 'checkpoint/model.ckpt', global_step=epoch)
+            weight_path = 'checkpoint/ep-%03d-val_loss-%.4f.hdf5' \
+                          % (epoch, val_loss)
+            model.save_weights(weight_path)
 
 
 def augmentation_fn(image, label):
-    """wrapper for augmentation methods
+    """Wrapper for augmentation methods
     """
     image = np.uint8(image)
     label = np.uint8(label)
@@ -167,26 +176,30 @@ def augmentation_fn(image, label):
 
 # tests.test_train_nn(train_nn)
 def run():
+    from_scratch = False
     num_classes = 2
     image_shape = (160, 576)
-    learning_rate_val = 0.05
+    learning_rate_val = 0.06
     epochs = 100
-    decay = learning_rate_val / epochs
-    batch_size = 18
+    decay = learning_rate_val / (2 * epochs)
+    batch_size = 15
     data_dir = './data'
     runs_dir = './runs'
     tests.test_for_kitti_dataset(data_dir)
     # OPTIONAL: Train and Inference on the cityscapes dataset instead of the
     # You'll need a GPU with at least 10 teraFLOPS to train on.
     #  https://www.cityscapes-dataset.com/
-    weight_path = helper.maybe_download_mobilenet_weights()
+    if not from_scratch:
+        weight_path = helper.maybe_download_mobilenet_weights()
+    if os.path.exists('checkpoint'):
+        shutil.rmtree('checkpoint')
+    os.makedirs('checkpoint')
+
     with K.get_session() as sess:
         # Create function to get batches
         train_batches_fn, val_batches_fn = helper.gen_batches_functions(
             os.path.join(data_dir, 'data_road/training'), image_shape,
             train_augmentation_fn=augmentation_fn)
-        # OPTIONAL: Augment Images for better results
-        #  https://datascience.stackexchange.com/questions/5224/how-to-prepare-augment-images-for-neural-network
 
         learning_phase = K.learning_phase()
         learning_rate = tf.placeholder(tf.float32, name='learning_rate')
@@ -197,15 +210,15 @@ def run():
 
         model = SegMobileNet(
             image_shape[0], image_shape[1], num_classes=num_classes)
-        # model.load_weights(weight_path, by_name=True)
+        if not from_scratch:
+            model.load_weights(weight_path, by_name=True)
         input_image = model.input
         logits = model.output
+        # https://blog.keras.io/keras-as-a-simplified-interface-to-tensorflow-tutorial.html  # noqa
+        update_ops = model.updates
 
         logits, train_op, loss, iou, iou_op, metric_reset_ops = optimize(
             logits, correct_label, learning_rate, num_classes)
-
-        # https://blog.keras.io/keras-as-a-simplified-interface-to-tensorflow-tutorial.html  # noqa
-        update_ops = model.updates
 
         train_nn(sess, epochs, batch_size,
                  train_batches_fn, val_batches_fn,
@@ -213,7 +226,8 @@ def run():
                  correct_label,
                  learning_rate, learning_rate_val, decay, learning_phase,
                  iou_op, iou, metric_reset_ops,
-                 update_ops)
+                 update_ops,
+                 model)
 
         helper.save_inference_samples(
             runs_dir, data_dir, sess, image_shape,

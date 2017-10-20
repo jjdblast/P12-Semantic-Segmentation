@@ -50,7 +50,7 @@ def blur_both(image, label, p=0.5, k=7):
 
 
 def change_illumination(
-        image, sat_limit=(-9, 9), val_limit=(-24, 24)):
+        image, sat_limit=(-12, 12), val_limit=(-30, 30)):
     image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
     h, s, v = cv2.split(image)
     sat_shift = np.random.uniform(sat_limit[0], sat_limit[1])
