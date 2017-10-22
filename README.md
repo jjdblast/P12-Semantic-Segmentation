@@ -61,6 +61,10 @@ KITTI only includes urban images so I tested it on a short highway scene capture
 ![alt text][image6]
 
 You can download the latest version of Roady from [Google Play](https://play.google.com/store/apps/details?id=org.steffen.roady).
+**Note**: Most of the app code comes from these two codelabs:
+- [TensorFlow for Poets 2](https://codelabs.developers.google.com/codelabs/tensorflow-for-poets-2/index.html?index=..%2F..%2Findex#0)
+- [Android & TensorFlow: Artistic Style Transfer](https://codelabs.developers.google.com/codelabs/tensorflow-style-transfer-android/index.html?index=..%2F..%2Findex#0)
+
 
 ### Setup
 ##### Frameworks and Packages
