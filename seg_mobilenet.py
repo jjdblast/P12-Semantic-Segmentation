@@ -41,13 +41,13 @@ def TruncatedMobileNet(input_height, input_width):
     x = _depthwise_conv_block(
         x, 512, alpha, depth_multiplier, dilation_rate=1, block_id=7)
     x = _depthwise_conv_block(
-        x, 512, alpha, depth_multiplier, dilation_rate=2, block_id=8)
+        x, 512, alpha, depth_multiplier, dilation_rate=1, block_id=8)
     x = _depthwise_conv_block(
-        x, 512, alpha, depth_multiplier, dilation_rate=4, block_id=9)
+        x, 512, alpha, depth_multiplier, dilation_rate=2, block_id=9)
     x = _depthwise_conv_block(
-        x, 512, alpha, depth_multiplier, dilation_rate=8, block_id=10)
+        x, 512, alpha, depth_multiplier, dilation_rate=4, block_id=10)
     x_s16 = _depthwise_conv_block(
-        x, 512, alpha, depth_multiplier, dilation_rate=16, block_id=11)
+        x, 512, alpha, depth_multiplier, dilation_rate=4, block_id=11)
 
     return img_input, x_s2, x_s4, x_s8, x_s16
 

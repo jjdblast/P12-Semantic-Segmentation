@@ -11,7 +11,8 @@ Since the [Kitti Road dataset](http://www.cvlibs.net/datasets/kitti/eval_road.ph
 [image2]: ./res/augmentation_methods_overview.png
 [image3]: ./res/latest_run.png
 [image4]: ./res/benchmark_results.png
-
+[image5]: ./res/highway.gif
+[image6]: ./res/padded_icon.png
 
 #### Data augmentation
 The dataset is rather small i.e. only 289 training images. Thus, I used a few augmentation methods to generate more data. These methods include: rotation, flipping, blurring and changing the illumination of the scene (see `augmentation.py`).
@@ -22,7 +23,7 @@ An example is given in the following image:
 #### Quantitative Results
 Training for 100 epochs results in the following loss curves:
 ![alt text][image1]
-I ran a few experiments with different learning rate schedules and varying amounts of data augmentation but the results did not change that much.
+I ran a few experiments with different learning rate schedules, varying amounts of data augmentation and changed dilation rates but the results did not change that much. Moreover, there was no big difference in training from scratch vs. using ImageNet weights.
 By default logs are saved to the `log` directory. To visualize them start tensorboard via `tensorboard --logdir log`.
 
 #### Qualitative Results
@@ -52,6 +53,15 @@ One forward pass for `optimized.pb` on `/cpu:0` took: 146.2478 ms
 Though, I only checked them visually:
 ![alt text][image4]
 
+### Generalization
+KITTI only includes urban images so I tested it on a short highway scene captured with my smartphone. The results are not super accurate. Probably due to different camera parameters or maybe just not enough data.
+![alt text][image5]
+
+### Get the app
+![alt text][image6]
+
+You can download the latest version of Roady from [Google Play](https://play.google.com/store/apps/details?id=org.steffen.roady).
+
 ### Setup
 ##### Frameworks and Packages
 Make sure you have the following is installed:
@@ -60,6 +70,7 @@ Make sure you have the following is installed:
  - [TensorFlow](https://www.tensorflow.org/)
  - [NumPy](http://www.numpy.org/)
  - [SciPy](https://www.scipy.org/)
+ - [OpenCV](https://opencv.org/)
 
 ##### Dataset
 Download the [Kitti Road dataset](http://www.cvlibs.net/datasets/kitti/eval_road.php) from [here](http://www.cvlibs.net/download.php?file=data_road.zip).  Extract the dataset in the `data` folder.  This will create the folder `data_road` with all the training and test images.

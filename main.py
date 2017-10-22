@@ -179,10 +179,10 @@ def run():
     from_scratch = False
     num_classes = 2
     image_shape = (160, 576)
-    learning_rate_val = 0.06
+    learning_rate_val = 0.001
     epochs = 100
     decay = learning_rate_val / (2 * epochs)
-    batch_size = 15
+    batch_size = 18
     data_dir = './data'
     runs_dir = './runs'
     tests.test_for_kitti_dataset(data_dir)
