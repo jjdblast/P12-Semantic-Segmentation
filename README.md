@@ -29,7 +29,7 @@ By default logs are saved to the `log` directory. To visualize them start tensor
 #### Qualitative Results
 Here are a few predictions @~92% validation mIoU:
 ![alt text][image3]
-It can be seen that shadows are handled quite well. Road vs. sidewalk still leaves room for improvments (e.g. bottom left). More results can be found in the `latest_run` directory.
+It can be seen that shadows are handled quite well. Road vs. sidewalk still leaves room for improvements (e.g. bottom left). More results can be found in the `latest_run` directory.
 
 ### Inference Optimization
 There are plenty of [methods for inference optimization](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/graph_transforms/README.md) already implemented in tensorflow. I am using the `fold_constants`, `fold_batch_norms` and `round_weights` transforms (see `export_for_mobile.py`).
