@@ -76,7 +76,7 @@ bash quantize.sh
 ```
 
 The second step will record and freeze the requantization ranges.
-I tested both version (8-bit and 32-bit) and the 32-bit version still runs faster. I am not sure what the reason this.
+I tested both version (8-bit and 32-bit) and the 32-bit version still runs faster. I am not sure what the reason is.
 
 ### Setup
 ##### Frameworks and Packages
