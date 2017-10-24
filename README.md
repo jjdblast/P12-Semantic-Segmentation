@@ -76,7 +76,7 @@ bash quantize.sh
 ```
 
 The second step requires that you built the transform_graph binary (`bazel build tensorflow/tools/graph_transforms:transform_graph`). It will record and freeze the requantization ranges.
-I tested both version (8-bit and 32-bit) and the 32-bit version still runs faster. I am not sure what the reason is.
+I tested both versions (8-bit and 32-bit) and the 32-bit version still runs faster.
 
 ### Setup
 ##### Frameworks and Packages
