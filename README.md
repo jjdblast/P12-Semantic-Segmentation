@@ -65,7 +65,7 @@ You can download the latest version of Roady from [Google Play](https://play.goo
 - [Android & TensorFlow: Artistic Style Transfer](https://codelabs.developers.google.com/codelabs/tensorflow-style-transfer-android/index.html?index=..%2F..%2Findex#0)
 
 #### Quantization
-As proposed in the chapter Quantization Challenges of [Building Mobile Applications with TensorFlow](http://www.oreilly.com/data/free/building-mobile-applications-with-tensorflow.csp) I implemented the 8-bit quantization. Unfortunately, one can't just use the python interface. The procedure is as follows:
+As proposed in the chapter 'Quantization Challenges' of [Building Mobile Applications with TensorFlow](http://www.oreilly.com/data/free/building-mobile-applications-with-tensorflow.csp) I implemented the 8-bit quantization. Unfortunately, one can't just use the python interface. The procedure is as follows:
 - Freeze the graph:
 ```
 python3 export_for_roady.py --weight_path ep-000-val_loss-0.0000.hdf5
