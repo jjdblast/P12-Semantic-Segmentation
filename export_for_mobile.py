@@ -13,7 +13,7 @@ from seg_mobilenet import SegMobileNet
 
 INPUT_TENSOR_NAME = 'image_input'
 FINAL_TENSOR_NAME = 'lambda_4/ResizeBilinear'
-FREEZED_PATH = 'tf_files/freezed.pb'
+FREEZED_PATH = 'tf_files/frozen.pb'
 OPTIMIZED_PATH = 'tf_files/optimized.pb'
 
 parser = argparse.ArgumentParser()
@@ -47,18 +47,18 @@ transforms = [
     'fold_batch_norms',
     'remove_device',
     'fold_old_batch_norms',
-    'round_weights(num_steps=256)']
+    'fold_constants(ignore_errors=false)',
+    'round_weights(num_steps=256)',
+]
 
+# 'fuse_convolutions',
 for transform in transforms:
-    try:
-        print("Starting transform: `%s` ... " % transform)
-        optimized_graph_def = TransformGraph(
-            optimized_graph_def,
-            [INPUT_TENSOR_NAME],
-            [FINAL_TENSOR_NAME],
-            [transform])
-    except:
-        print('Transform failed: `%s`' % transform)
+    print("Starting transform: `%s` ... " % transform)
+    optimized_graph_def = TransformGraph(
+        optimized_graph_def,
+        [INPUT_TENSOR_NAME],
+        [FINAL_TENSOR_NAME],
+        [transform])
 
 tf.summary.FileWriter('opt_log', graph_def=optimized_graph_def)
 print("Wrote optimized graph to `%s` ... " % 'opt_log')

@@ -4,7 +4,7 @@ This project is part of the Udacity Car-ND. Originally, it uses a VGG-frontend. 
 Though, I added skip-connections for stride-8 and stride-4 (adding stride-2 gave no better results). 
 The model uses the [Keras MobileNet implementation](https://github.com/fchollet/keras/blob/master/keras/applications/mobilenet.py) and training is done with
 [TensorFlow](https://www.tensorflow.org/).
-Since the [Kitti Road dataset](http://www.cvlibs.net/datasets/kitti/eval_road.php) provides no offical training/validation splits I used 10% of the training data for validation. Images are downscaled to half resolution.
+Since the [Kitti Road dataset](http://www.cvlibs.net/datasets/kitti/eval_road.php) provides no official training/validation splits I used 10% of the training data for validation. Images are downscaled to half resolution.
 
 [//]: # (Image References)
 [image1]: ./res/loss_curves.png
@@ -18,7 +18,6 @@ Since the [Kitti Road dataset](http://www.cvlibs.net/datasets/kitti/eval_road.ph
 The dataset is rather small i.e. only 289 training images. Thus, I used a few augmentation methods to generate more data. These methods include: rotation, flipping, blurring and changing the illumination of the scene (see `augmentation.py`).
 An example is given in the following image:
 ![alt text][image2]
-
 
 #### Quantitative Results
 Training for 100 epochs results in the following loss curves:
@@ -37,7 +36,7 @@ These methods are explained in more detail on the [Pete Warden blog](https://pet
 After all, the (zipped) optimized graph is only 1.8M.
 To optimize your graph run:
 ```
-python3 export_for_mobile.py --weight_path checkpoint/ep-045-val_loss-0.0123.hdf5
+python3 export_for_mobile.py --weight_path ep-000-val_loss-0.0000.hdf5
 ```
 You can check and benchmark the optimized graph with:
 ```
@@ -65,6 +64,19 @@ You can download the latest version of Roady from [Google Play](https://play.goo
 - [TensorFlow for Poets 2](https://codelabs.developers.google.com/codelabs/tensorflow-for-poets-2/index.html?index=..%2F..%2Findex#0)
 - [Android & TensorFlow: Artistic Style Transfer](https://codelabs.developers.google.com/codelabs/tensorflow-style-transfer-android/index.html?index=..%2F..%2Findex#0)
 
+#### Quantization
+As proposed in the chapter Quantization Challenges of [Building Mobile Applications with TensorFlow](http://www.oreilly.com/data/free/building-mobile-applications-with-tensorflow.csp) I implemented the 8-bit quantization. Unfortunately, one can't just use the python interface. The procedure is as follows:
+- Freeze the graph:
+```
+python3 export_for_roady.py --weight_path ep-000-val_loss-0.0000.hdf5
+```
+- Then run:
+```
+bash quantize.sh
+```
+
+The second step will record and freeze the requantization ranges.
+I tested both version (8-bit and 32-bit) and the 32-bit version still runs faster. I am not sure what the reason this.
 
 ### Setup
 ##### Frameworks and Packages

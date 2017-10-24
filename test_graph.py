@@ -6,13 +6,13 @@ from os.path import basename as bn
 
 INPUT_TENSOR_NAME = 'image_input'
 FINAL_TENSOR_NAME = 'lambda_4/ResizeBilinear'
-FREEZED_PATH = 'tf_files/freezed.pb'
+FREEZED_PATH = 'tf_files/frozen.pb'
 OPTIMIZED_PATH = 'tf_files/optimized.pb'
 IMAGE_SHAPE = (160, 576)
 put_text = lambda img, text: cv2.putText(img, text, (10, 50), cv2.FONT_HERSHEY_DUPLEX, 2.0, (255, 127, 127), 3, cv2.LINE_AA)  # noqa
 
 
-def time_run(graph_path, device='/gpu:0', num_runs=300):
+def time_run(graph_path, device='/gpu:0', num_runs=3):
     tf.reset_default_graph()
     with tf.device(device):
         with tf.Session(
@@ -48,8 +48,9 @@ def time_run(graph_path, device='/gpu:0', num_runs=300):
             pred = np.uint8(out.argmax(axis=-1))
             pred_rgb = np.dstack((0 * pred, 255 * pred, 0 * pred))
             res_img = cv2.addWeighted(img, 0.6, pred_rgb, 0.4, 0.0)
-            put_text(res_img, bn(graph_path))
-            cv2.imwrite(bn(graph_path + '.png'), res_img)
+            img_fn = (bn(graph_path) + device + '.png').replace('/', '_')
+            put_text(res_img, img_fn)
+            cv2.imwrite(img_fn, res_img)
 
 
 time_run(FREEZED_PATH, device='/gpu:0')

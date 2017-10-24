@@ -109,6 +109,12 @@ def train_nn(
     # embed()
     sess.run(metric_reset_ops)
     sess.run(tf.variables_initializer(optimizer_variables))
+    for var in all_vars:
+        try:
+            sess.run(var)
+        except:
+            print("Err ", var)
+            embed()
     epoch_pbar = tqdm(range(epochs))
     for epoch in epoch_pbar:
         # train
@@ -210,6 +216,8 @@ def run():
 
         model = SegMobileNet(
             image_shape[0], image_shape[1], num_classes=num_classes)
+        # this initializes the keras variables
+        sess = K.get_session()
         if not from_scratch:
             model.load_weights(weight_path, by_name=True)
         input_image = model.input

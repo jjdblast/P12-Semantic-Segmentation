@@ -87,6 +87,9 @@ def gen_batches_functions(data_folder, image_shape,
         glob(os.path.join(data_folder, 'image_2', '*.png')))[:]
     train_paths, val_paths = train_test_split(
         image_paths, test_size=0.1, random_state=21)
+    camvid_paths = sorted(glob(os.path.join(
+        data_folder, 'camvid_image_2', '*.png')))[:]
+    train_paths.extend(camvid_paths)
 
     def get_batches_fn(batch_size, image_paths, augmentation_fn=None):
         """
@@ -94,10 +97,15 @@ def gen_batches_functions(data_folder, image_shape,
         :param batch_size: Batch Size
         :return: Batches of training data
         """
+        label_fns = glob(os.path.join(
+            data_folder, 'gt_image_2', '*_road_*.png'))
+        camvid_labels = glob(os.path.join(
+            data_folder, 'camvid_gt_image_2', '*_road_*.png'))
+        label_fns.extend(camvid_labels)
         label_paths = {
             re.sub(r'_(lane|road)_', '_', os.path.basename(path)): path
-            for path in glob(os.path.join(
-                data_folder, 'gt_image_2', '*_road_*.png'))}
+            for path in label_fns}
+
         background_color = np.array([255, 0, 0])
         random.shuffle(image_paths)
         for batch_i in range(0, len(image_paths), batch_size):
