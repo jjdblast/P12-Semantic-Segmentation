@@ -13,6 +13,7 @@ Since the [Kitti Road dataset](http://www.cvlibs.net/datasets/kitti/eval_road.ph
 [image4]: ./res/benchmark_results.png
 [image5]: ./res/highway.gif
 [image6]: ./res/padded_icon.png
+[image7]: ./res/app.gif
 
 #### Data augmentation
 The dataset is rather small i.e. only 289 training images. Thus, I used a few augmentation methods to generate more data. These methods include: rotation, flipping, blurring and changing the illumination of the scene (see `augmentation.py`).
@@ -60,6 +61,9 @@ KITTI only includes urban images so I tested it on a short highway scene capture
 ![alt text][image6]
 
 You can download the latest version of Roady from [Google Play](https://play.google.com/store/apps/details?id=org.steffen.roady).
+
+![alt text][image7]
+
 **Note**: Most of the app code comes from these two codelabs:
 - [TensorFlow for Poets 2](https://codelabs.developers.google.com/codelabs/tensorflow-for-poets-2/index.html?index=..%2F..%2Findex#0)
 - [Android & TensorFlow: Artistic Style Transfer](https://codelabs.developers.google.com/codelabs/tensorflow-style-transfer-android/index.html?index=..%2F..%2Findex#0)
